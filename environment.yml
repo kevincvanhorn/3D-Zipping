@@ -1,0 +1,12 @@
+name: scijava
+channels:
+  - conda-forge
+dependencies:
+  - beakerx
+  - jupyter_contrib_nbextensions
+  - numpy
+  - openjdk=8
+  - pyimagej
+  - python
+  - rise
+  - scikit-image
