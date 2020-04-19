@@ -242,55 +242,132 @@ public class Geometry<T extends RealType<T>> implements Command{
 	private void VisitConnectedRegion(int x, int y, int z) throws Exception {
 		//ArrayList<Vector3D> curShape = new ArrayList<Vector3D>();
 		ArrayList<Integer> curShapeIndices = new ArrayList<Integer>();
+		ArrayList<Byte> curShapeHalfIndices = new ArrayList<Byte>();
 		curRegion.clear(); findRegion(x,y,z);
 		System.out.println(curRegion.toString());
 		
 		int iStart = Collections.min(curRegion); // min(z): top left corner
-		int iCur = iStart;
-		Vector3D vStart = new Vector3D(x,y,z);
-		Vector3D vCur = vStart.clone();
+		//Vector3D vStart = new Vector3D(x,y,z);
+		//Vector3D vCur = vStart.clone();
 		int maxZ = Collections.max(curRegion) / XY;
 		
-		byte[] nextDirs = new byte[maxZ-z+1];  // Dir to next (CC) planar filled vertex.
-		int[] nextIndices = new int[maxZ-z+1]; // Index rep. of the next vertex 
-		distFromPrevDirs = new byte[maxZ-z+1]; // Dist of new dir from the prev.
-		byte[] dist = {0}; 					   // 0 := V_ISOLATED returned
+		// Initialization for first level:
+		int[] iLevelPrev = {0}; iLevelPrev[0] = XYZ(x+1,y,z);
+		int[] iLevelStart = {0}; iLevelStart[0] = iStart;
 		
-		// Initialize: dir to next adjacent for each level (XY planes):
-		for(int i = 0; i < nextDirs.length; ++i) {
-			nextDirs[i] = GetCCIndexPlanar(XYZ(x+1,y,z+i),XYZ(x,y,z+i), dist);
-			nextIndices[i] = XYZ(x,y,z+i) + Adjacents[nextDirs[i]];
+		// Visit each z level of voxels:
+		for(int level = 0; level <= maxZ-z+1; ++level) {
+			visitLevel(level, curShapeIndices, curShapeHalfIndices, iLevelStart, iLevelPrev);
+		}
+		
+		int test = 0;
+		shapesIndices.add(curShapeIndices);
+		objWriter.saveFile("test.obj");
+	}
+	
+	// HALF-PRECISION:
+	// Represented with an accompanying list: halfList [z up 1/2 :1] 1bit [dir from vertex 0-7] 3bits
+	
+	void visitLevel(int z, ArrayList<Integer> curShapeIndices, ArrayList<Byte> halfList, int[] iStart, int[] iPrev) throws Exception {
+		int start = iStart[0];
+		int prev = iPrev[0];
+		int cur = start;
+		
+		byte dir = 0; // [0]->
+		
+		// Direction stats, 0: lower, 1: upper
+		byte[] nextDirs  = new byte[2]; // Dir to next (CC) planar filled vertex.
+		int[] nextIndices = new int[2]; // Index rep. of the next vertex 
+		distFromPrevDirs = new byte[2]; // Dist of new dir from the prev.
+		byte[] dist = {0}; 			    // 0 := V_ISOLATED returned
+		
+		// Check (z+) and (x-,z+) for half start vertex:
+		if(curRegion.contains(start + WIDTH*HEIGHT)) {
+			halfList.add((byte)8); // z.5
+		}
+		else if(curRegion.contains(start + WIDTH*HEIGHT + Adjacents[0])) {
+			halfList.add((byte)0); // z.5,x.5
+		}
+		else {
+			halfList.add((byte)-1); // null
+		}
+		
+		// Initialize:
+		for(int i = 0; i < 2; ++i) {
+			nextDirs[i] = GetCCIndexPlanar(prev + XY*(i),cur + XY*(i), dist);
+			nextIndices[i] = cur+ XY*(i) + Adjacents[nextDirs[i]]; // Same index if no adjacent found.
 			distFromPrevDirs[i] = dist[0];
 		}
 		
-		// Core loop:
-		// Go to earliest angle & lowest for consensus angle
+		// CORE LOOP:
 		do {
-			curShapeIndices.add(iCur);
+			curShapeIndices.add(cur);
 			
-			int idx = getNextDirIdx();
+			int idx = getNextDirIdx(false);
 			
-			while(!isValidPath(iCur, nextIndices[idx])) {
-				distFromPrevDirs[idx] += 1;
-				idx = getNextDirIdx();
+			/*int ntemp = GetCCIndexPlanar(cur + XY*(idx) - Adjacents[nextDirs[idx]], cur+ XY*(idx), dist);
+			int lookahead = nextIndices[idx] = cur + XY*(idx) + Adjacents[ntemp];
+			if((lookahead == nextIndices[0] || lookahead == nextIndices[1])) {//distFromPrevDirs[idx] <= 4 && 
+				idx = getNextDirIdx(true);
+			}*/
+			
+			/*if(Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
+				idx = getNextDirIdx(true);
+			}*/
+			
+			/*
+			if(collinear(nextIndices[0], nextIndices[1]-XY) && Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
+				idx = getNextDirIdx(false);
+			}*/
+			
+			/*if(halfList.get(halfList.size()-1)== 0 && Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
+				idx = getNextDirIdx(false);
+			}*/
+			
+			int distDiff = Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]);
+			if(nextDirs[0] == nextDirs[1]){
+				// Go to [0] and add half z+
+				cur = nextIndices[0];
+				dir = nextDirs[0];
+				halfList.add((byte)8);
 			}
-			
-			iCur = nextIndices[idx]; // next vertex
-			int prevPlanar = iCur - Adjacents[nextDirs[idx]]; // DEBUG: this could be problematic at edges/extents.
-			nextDirs[idx] = GetCCIndexPlanar(prevPlanar, iCur, dist);
-			nextIndices[idx] = iCur + Adjacents[nextDirs[idx]];
-			
-			int temp = distFromPrevDirs[idx];
-			for(int i = 0; i < distFromPrevDirs.length; ++i) {
-				if(distFromPrevDirs[i] == temp) {
-					distFromPrevDirs[i] = dist[0];
+			else if(distDiff == 1 && curRegion.contains(nextIndices[1]-XY)) {
+				cur = nextIndices[0];
+				dir = nextDirs[0];
+				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+			}
+			else if(distDiff == 1 && curRegion.contains(nextIndices[0]+Adjacents[nextDirs[0]+1])) {
+				cur = nextIndices[0];
+				dir = nextDirs[0];
+				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+			}
+			else {
+				// Use idx
+				cur = nextIndices[idx];
+				dir = nextDirs[idx];
+				
+				if(idx == 0 && curRegion.contains(cur + XY)) {
+					halfList.add((byte)8);
+					
 				}
-				else if(i != idx) {distFromPrevDirs[i] -= dist[0];}
+				else if(idx == 1 && curRegion.contains(cur - XY)) {
+					halfList.add((byte)8);
+					cur -= XY;
+				}
+				else {halfList.add((byte)-1);}
 			}
-		} while(iCur != iStart);
-		
-		shapesIndices.add(curShapeIndices);
-		objWriter.saveFile("test.obj");
+			
+			for(int i = 0; i < 2; ++i) {
+				nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
+				nextIndices[i] = cur + XY*(i) + Adjacents[nextDirs[i]];
+				distFromPrevDirs[i] = dist[0];
+			}
+			
+		} while(cur != start);
+	}
+	
+	boolean collinear(int prev, int cur) throws Exception {
+		return GetStartDir(prev, cur) % 2 == 0;
 	}
 	
 	boolean isValidPath(int prev, int next) {
@@ -306,16 +383,29 @@ public class Geometry<T extends RealType<T>> implements Command{
 		return true;
 	}
 	
-	private int getNextDirIdx(){
-		byte min = 9; int idx = 0;
-		// Favors the z bottommost (first) index
-		for(int i = 0; i < distFromPrevDirs.length; ++i) {
-			if(distFromPrevDirs[i] < min) {
-				min = distFromPrevDirs[i];
-				idx = i;
+	private int getNextDirIdx(boolean useMin){
+		if(!useMin) {
+			byte max = 0; int idx = 0;
+			// Favors the z-, closest index
+			for(int i = 0; i < distFromPrevDirs.length; ++i) {
+				if(distFromPrevDirs[i] > max) {
+					max = distFromPrevDirs[i];
+					idx = i;
+				}
 			}
+			return idx;
 		}
-		return idx;
+		else {
+			byte min = 9; int idx = 0;
+			// Favors the z-, closest index
+			for(int i = 0; i < distFromPrevDirs.length; ++i) {
+				if(distFromPrevDirs[i] < min) {
+					min = distFromPrevDirs[i];
+					idx = i;
+				}
+			}
+			return idx;
+		}
 	}
 	
 	
@@ -323,17 +413,18 @@ public class Geometry<T extends RealType<T>> implements Command{
 	// Check for the next counter-clockwise index from the vector cur->prev
 	byte GetCCIndexPlanar(int iPrev, int iCur, /*ref*/byte[] dist) throws Exception
 	{
-		// Next direction must be at least 90 deg. away from the previous.
-		byte startdir = (byte)(GetStartDir(iPrev, iCur)+2);
+		// Next direction must be at least 45 deg. away from the previous.
+		byte startdir = (byte)(GetStartDir(iPrev, iCur)+1);
+		dist[0] = 0;
 		
 		// Use Vector2D when on edges:
 		if(visitedSet.onEdge(iCur)) {
 			int edgeIdx = visitedSet.getEdgeIndex(iCur);
-			for (byte i = startdir; i < startdir+6; ++i) {
+			for (byte i = startdir; i <= startdir+6; ++i) {
 				byte imod = (byte)(i % 8);
 				if(!outOfBounds[edgeIdx][imod]) {
 					if (curRegion.contains(iCur + Adjacents[imod])) {
-						dist[0] = (byte)(2 + i - startdir);
+						dist[0] = (byte)(1 + i - startdir);
 						return imod;
 					}
 				}
@@ -345,7 +436,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		for (byte i = startdir; i < startdir+6; ++i) {
 			byte imod = (byte)(i % 8);
 			if (curRegion.contains(iCur + Adjacents[imod])) {
-				dist[0] = (byte)(2 + i - startdir);
+				dist[0] = (byte)(1 + i - startdir);
 				return imod;
 			}
 		}
