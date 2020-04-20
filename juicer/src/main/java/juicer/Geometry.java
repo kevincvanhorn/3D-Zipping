@@ -325,20 +325,35 @@ public class Geometry<T extends RealType<T>> implements Command{
 			}*/
 			
 			int distDiff = Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]);
+			int distSum = distFromPrevDirs[0] - distFromPrevDirs[1];
 			if(nextDirs[0] == nextDirs[1]){
 				// Go to [0] and add half z+
 				cur = nextIndices[0];
 				dir = nextDirs[0];
-				halfList.add((byte)8);
+				if(nextIndices[0] == nextIndices[1]-XY) {
+					halfList.add((byte)8); // Vertical: z + 0.5
+				}
+				else if(halfList.size() > 0) {
+					halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
+				}
 			}
-			else if(distDiff == 1 && curRegion.contains(nextIndices[1]-XY)) {
+			else if(distFromPrevDirs[0] != 0 && (distDiff == 1) && curRegion.contains(nextIndices[1]-XY)) {
+				// Outer Diagonal
+				cur = nextIndices[0];
+				dir = nextDirs[idx];
+				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+			}
+			else if( distFromPrevDirs[0] != 0 && distDiff == 1 && curRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) {
+				// Inner Diagonals
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 			}
-			else if(distDiff == 1 && curRegion.contains(nextIndices[0]+Adjacents[nextDirs[0]+1])) {
+			else if(distFromPrevDirs[1] == 0 && curRegion.contains(nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)])) {
+				// Use lower
 				cur = nextIndices[0];
 				dir = nextDirs[0];
+				nextIndices[1] = nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)];
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 			}
 			else {
@@ -348,7 +363,6 @@ public class Geometry<T extends RealType<T>> implements Command{
 				
 				if(idx == 0 && curRegion.contains(cur + XY)) {
 					halfList.add((byte)8);
-					
 				}
 				else if(idx == 1 && curRegion.contains(cur - XY)) {
 					halfList.add((byte)8);
@@ -356,14 +370,46 @@ public class Geometry<T extends RealType<T>> implements Command{
 				}
 				else {halfList.add((byte)-1);}
 			}
+			//if(halfList.get(halfList.size()-1) == 8 && halfList.get(halfList.size()-1) == 0) {
+			
+			// Use [1] directly if the inner vertex is closer in to the center based on dir
+			if(inner(halfList.get(halfList.size()-1), dir)) {
+				for(int i = 0; i < 2; ++i) {
+					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), nextIndices[i], dist);
+					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
+					distFromPrevDirs[i] = dist[0];
+				}
+				if(cur != start) {
+					continue;
+				}else {break;}
+			}	
 			
 			for(int i = 0; i < 2; ++i) {
-				nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
+				//nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
+				nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), cur+ XY*(i), dist);
 				nextIndices[i] = cur + XY*(i) + Adjacents[nextDirs[i]];
 				distFromPrevDirs[i] = dist[0];
 			}
+			/*}else {
+				for(int i = 0; i < 2; ++i) {
+					nextDirs[i] = GetCCIndexPlanar(nextIndices[i] - Adjacents[dir], nextIndices[i], dist);
+					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
+					distFromPrevDirs[i] = dist[0];
+				}
+			}*/
 			
 		} while(cur != start);
+	}
+	
+	// Check half dir from lower vertex to see if upper vertex is radially out from the lower
+	boolean inner(byte halfDir, byte dir) {
+		// Act on diagonal half dirs only
+		if(halfDir != -1 && halfDir != 8) {
+			if(halfDir == (byte)Math.floorMod(dir -1,8) ||  halfDir == (byte)Math.floorMod(dir -2,8) || halfDir == (byte)Math.floorMod(dir -3,8)) {
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	boolean collinear(int prev, int cur) throws Exception {
@@ -408,13 +454,46 @@ public class Geometry<T extends RealType<T>> implements Command{
 		}
 	}
 	
+	// Precondition: indices must be on the same z plane
+		// Check for the next counter-clockwise index from the vector cur->prev
+		byte GetCCIndexPlanar(int iPrev, int iCur, /*ref*/byte[] dist) throws Exception
+		{
+			// Next direction must be at least 45 deg. away from the previous.
+			byte startdir = (byte)(GetStartDir(iPrev, iCur)+1);
+			dist[0] = 0;
+			
+			// Use Vector2D when on edges:
+			if(visitedSet.onEdge(iCur)) {
+				int edgeIdx = visitedSet.getEdgeIndex(iCur);
+				for (byte i = startdir; i <= startdir+6; ++i) {
+					byte imod = (byte)(i % 8);
+					if(!outOfBounds[edgeIdx][imod]) {
+						if (curRegion.contains(iCur + Adjacents[imod])) {
+							dist[0] = (byte)(1 + i - startdir);
+							return imod;
+						}
+					}
+				}
+				return V_ISOLATED;
+			}
+			
+			// Check start and next 5 dirs for a point on this plane:
+			for (byte i = startdir; i < startdir+6; ++i) {
+				byte imod = (byte)(i % 8);
+				if (curRegion.contains(iCur + Adjacents[imod])) {
+					dist[0] = (byte)(1 + i - startdir);
+					return imod;
+				}
+			}
+			return V_ISOLATED;
+		}
 	
 	// Precondition: indices must be on the same z plane
 	// Check for the next counter-clockwise index from the vector cur->prev
-	byte GetCCIndexPlanar(int iPrev, int iCur, /*ref*/byte[] dist) throws Exception
+	byte GetCCIndexPlanar2(int dir, int iCur, /*ref*/byte[] dist) throws Exception
 	{
 		// Next direction must be at least 45 deg. away from the previous.
-		byte startdir = (byte)(GetStartDir(iPrev, iCur)+1);
+		byte startdir = (byte)((dir+1)%8);
 		dist[0] = 0;
 		
 		// Use Vector2D when on edges:
@@ -455,7 +534,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		else if(diff == -WIDTH) {return 6;}       // down (0,-1)
 		else if(diff == -1*(WIDTH+1)) {return 7;} // down-right (1,-1)
 		else if(diff == 0) {return 8;}
-		else throw new Exception("Invalid index for start direction.");
+		else throw new Exception("Invalid index for start direction: " + iPrev + ", "+iCur+"= "+diff);
 	}
 	
 	Vector2D[] Adjacents2D = {
