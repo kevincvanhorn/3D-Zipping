@@ -4,6 +4,7 @@ package juicer;
 
 import net.imagej.mesh.*;
 
+import java.awt.List;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -15,10 +16,6 @@ import net.imagej.ImgPlus;
 import net.imagej.ops.OpService;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.numeric.RealType;
-import net.imglib2.type.numeric.integer.UnsignedShortType;
-import net.imglib2.util.Util;
-import net.imglib2.view.Views;
-import sc.iview.SciView;
 
 import org.scijava.command.Command;
 import org.scijava.convert.ConvertService;
@@ -44,6 +41,7 @@ public class Geometry<T extends RealType<T>> implements Command{
     public int HEIGHT;
     public int DEPTH;
     private int XY; // WIDTH * HEIGHT
+    private float XYInv;
     
     private byte V_ISOLATED = 8; // No vertices in the 8 connected planar region of a vertex.
     
@@ -199,6 +197,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		HEIGHT = imp.getHeight();
 		DEPTH = imp.getStackSize();
 		XY = WIDTH*HEIGHT;
+		XYInv = 1.0f / (float)(XY);
 		
 		visitedSet = new VisitedSet(WIDTH * HEIGHT * DEPTH);
 		
@@ -233,6 +232,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	        }
         }
         int i = 0;
+        System.out.println("Complete.");
 	}
 	
 	protected HashSet<Integer> curRegion;
@@ -244,26 +244,89 @@ public class Geometry<T extends RealType<T>> implements Command{
 		ArrayList<Integer> curShapeIndices = new ArrayList<Integer>();
 		ArrayList<Byte> curShapeHalfIndices = new ArrayList<Byte>();
 		curRegion.clear(); findRegion(x,y,z);
-		System.out.println(curRegion.toString());
+		//System.out.println(curRegion.toString());
 		
-		int iStart = Collections.min(curRegion); // min(z): top left corner
-		//Vector3D vStart = new Vector3D(x,y,z);
-		//Vector3D vCur = vStart.clone();
+		int iStart;
 		int maxZ = Collections.max(curRegion) / XY;
+		int[] iLevelPrev = {0}; 
+		int[] iLevelStart = {0}; 
+		subRegionVisited.clear();
 		
-		// Initialization for first level:
-		int[] iLevelPrev = {0}; iLevelPrev[0] = XYZ(x+1,y,z);
-		int[] iLevelStart = {0}; iLevelStart[0] = iStart;
+		// Visit sets of 2 z levels of voxels:
+		// Modifies curRegion with each visit.
+		for(int level = 0; level <= maxZ-z; level+=2) { // maxZ-z-1 is the highest level
 		
-		// Visit each z level of voxels:
-		for(int level = 0; level <= maxZ-z+1; ++level) {
-			visitLevel(level, curShapeIndices, curShapeHalfIndices, iLevelStart, iLevelPrev);
+			iStart = Collections.min(curRegion); // min(z): top left corner
+			while((int)(iStart*XYInv) == level || (int)(iStart*XYInv) == level+1) {
+				
+				findNextSubRegion(level+1); // Implicit based on curRegion removals				
+				
+				iLevelPrev[0] = iStart + Adjacents[0]; // Immediate right - this could be out of bounds
+				iLevelStart[0] = iStart;
+				visitLevel(level, curShapeIndices, curShapeHalfIndices, iLevelStart, iLevelPrev);
+				
+				for(int ind : subRegion) {
+					if(curRegion.contains(ind)) {
+						curRegion.remove(ind);
+					}
+				}
+				
+				if(curRegion.size() > 0) {
+					iStart = Collections.min(curRegion); // min(z): top left corner
+				}else break;
+				
+			}
+
 		}
-		
-		int test = 0;
+
 		shapesIndices.add(curShapeIndices);
 		objWriter.saveFile("test.obj");
 	}
+	
+	
+	protected HashSet<Integer> subRegion = new HashSet<Integer>();
+	protected HashSet<Integer> subRegionVisited = new HashSet<Integer>();
+	void findNextSubRegion(int maxZ) 
+	{ 
+		subRegion.clear();
+		//subRegionVisited.clear();
+		int iStart = Collections.min(curRegion); // min(z): top left corner
+		
+	    //subRegion.add(iStart);
+		findSubRegion(iStart, maxZ);
+	} 
+	
+	void findSubRegion(int iVal, int maxZ) 
+	{ 
+		// Base Case
+		if((int)(iVal * XYInv) > maxZ) return;
+		else if(subRegionVisited.contains(iVal))return;
+		else if(!curRegion.contains(iVal)) return;
+			
+		// Add
+	    subRegion.add(iVal);
+	    subRegionVisited.add(iVal);
+	    
+	    // Recursion:
+	    if(visitedSet.onEdge(iVal)) {
+			int edgeIdx = visitedSet.getEdgeIndex(iVal);
+			// Check planar 4-connected:
+			for(int dir = 0; dir <= 6; dir+=2) {
+				if(!outOfBounds[edgeIdx][dir]) {
+			    	findSubRegion(iVal + Adjacents[dir], maxZ);
+			    }
+			}
+			
+		}
+	    else {
+	    	for(int dir = 0; dir <= 6; dir+=2) {
+	    		findSubRegion(iVal + Adjacents[dir], maxZ);
+			}
+	    }
+		// Check Z:
+		findSubRegion(iVal + XY, maxZ);
+		findSubRegion(iVal - XY, maxZ);
+	} 
 	
 	// HALF-PRECISION:
 	// Represented with an accompanying list: halfList [z up 1/2 :1] 1bit [dir from vertex 0-7] 3bits
@@ -282,10 +345,10 @@ public class Geometry<T extends RealType<T>> implements Command{
 		byte[] dist = {0}; 			    // 0 := V_ISOLATED returned
 		
 		// Check (z+) and (x-,z+) for half start vertex:
-		if(curRegion.contains(start + WIDTH*HEIGHT)) {
+		if(subRegion.contains(start + WIDTH*HEIGHT)) {
 			halfList.add((byte)8); // z.5
 		}
-		else if(curRegion.contains(start + WIDTH*HEIGHT + Adjacents[0])) {
+		else if(subRegion.contains(start + WIDTH*HEIGHT + Adjacents[0])) {
 			halfList.add((byte)0); // z.5,x.5
 		}
 		else {
@@ -295,34 +358,28 @@ public class Geometry<T extends RealType<T>> implements Command{
 		// Initialize:
 		for(int i = 0; i < 2; ++i) {
 			nextDirs[i] = GetCCIndexPlanar(prev + XY*(i),cur + XY*(i), dist);
+			if(nextDirs[i] == 8 && subRegion.contains(cur + Adjacents[0])) {
+				nextDirs[i] = 0;
+			}
 			nextIndices[i] = cur+ XY*(i) + Adjacents[nextDirs[i]]; // Same index if no adjacent found.
 			distFromPrevDirs[i] = dist[0];
 		}
+		
+		int prevDir = 0;
 		
 		// CORE LOOP:
 		do {
 			curShapeIndices.add(cur);
 			
+			// Turn around
+			if(nextDirs[0] == 8 && nextDirs[1] == 8) {
+				nextDirs[0] = (byte)Math.floorMod(prevDir+4,8);
+				nextDirs[1] = (byte)Math.floorMod(prevDir+4,8);
+				nextIndices[0] = nextIndices[0] + Adjacents[nextDirs[0]];
+				nextIndices[1] = nextIndices[1] + Adjacents[nextDirs[1]];
+			}
+			
 			int idx = getNextDirIdx(false);
-			
-			/*int ntemp = GetCCIndexPlanar(cur + XY*(idx) - Adjacents[nextDirs[idx]], cur+ XY*(idx), dist);
-			int lookahead = nextIndices[idx] = cur + XY*(idx) + Adjacents[ntemp];
-			if((lookahead == nextIndices[0] || lookahead == nextIndices[1])) {//distFromPrevDirs[idx] <= 4 && 
-				idx = getNextDirIdx(true);
-			}*/
-			
-			/*if(Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
-				idx = getNextDirIdx(true);
-			}*/
-			
-			/*
-			if(collinear(nextIndices[0], nextIndices[1]-XY) && Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
-				idx = getNextDirIdx(false);
-			}*/
-			
-			/*if(halfList.get(halfList.size()-1)== 0 && Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]) == 1) {
-				idx = getNextDirIdx(false);
-			}*/
 			
 			int distDiff = Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]);
 			int distSum = distFromPrevDirs[0] - distFromPrevDirs[1];
@@ -331,81 +388,97 @@ public class Geometry<T extends RealType<T>> implements Command{
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				if(nextIndices[0] == nextIndices[1]-XY) {
-					halfList.add((byte)8); // Vertical: z + 0.5
+					halfList.add((byte)8); // Vertical: z + 0.5	
 				}
 				else if(halfList.size() > 0) {
 					halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
 				}
 			}
-			else if(distFromPrevDirs[0] != 0 && (distDiff == 1) && curRegion.contains(nextIndices[1]-XY)) {
+			else if(nextIndices[1] == nextIndices[0]+XY) {
+				// Vertical
+				halfList.add((byte)8);
+				cur = nextIndices[0];
+			}
+			/*
+			else if(distFromPrevDirs[0] != 0 && (distDiff == 1) && subRegion.contains(nextIndices[1]-XY)) {
 				// Outer Diagonal
 				cur = nextIndices[0];
 				dir = nextDirs[idx];
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 			}
-			else if( distFromPrevDirs[0] != 0 && distDiff == 1 && curRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) {
+			else if((distDiff == 1) && subRegion.contains(nextIndices[0]+XY)) { // distFromPrevDirs[0] != 0 && 
+				// Outer Diagonal
+				cur = nextIndices[0];
+				dir = nextDirs[idx]; // 1
+				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+			}*/
+			else if(distDiff == 1 && subRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) { //  distFromPrevDirs[0] != 0 && 
 				// Inner Diagonals
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
-			}
-			else if(distFromPrevDirs[1] == 0 && curRegion.contains(nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)])) {
+			}/*
+			else if(distFromPrevDirs[1] == 0 && subRegion.contains(nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)])) {
 				// Use lower
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				nextIndices[1] = nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)];
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+			}*/
+			else if(idx == 1 && subRegion.contains(nextIndices[idx] - XY)) {
+				// Triangle contained to lower:
+				cur = nextIndices[0];
+				dir = nextDirs[1];
+				halfList.add((byte)-1); // single point
+			}
+			else if(idx == 0 && subRegion.contains(nextIndices[idx] + XY)) {
+				// Triangle contained to upper:
+				cur = nextIndices[1];
+				idx = 1;
+				dir = nextDirs[0];
+				halfList.add((byte)-1); // single point
 			}
 			else {
 				// Use idx
 				cur = nextIndices[idx];
 				dir = nextDirs[idx];
 				
-				if(idx == 0 && curRegion.contains(cur + XY)) {
+				if(idx == 0 && subRegion.contains(cur + XY)) {
 					halfList.add((byte)8);
 				}
-				else if(idx == 1 && curRegion.contains(cur - XY)) {
+				else if(idx == 1 && subRegion.contains(cur - XY)) {
 					halfList.add((byte)8);
 					cur -= XY;
 				}
 				else {halfList.add((byte)-1);}
 			}
-			//if(halfList.get(halfList.size()-1) == 8 && halfList.get(halfList.size()-1) == 0) {
 			
 			// Use [1] directly if the inner vertex is closer in to the center based on dir
-			if(inner(halfList.get(halfList.size()-1), dir)) {
+			if(inner(halfList.get(halfList.size()-1), dir)) { // || idx == 1 && !subRegion.contains(cur - XY)
 				for(int i = 0; i < 2; ++i) {
 					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), nextIndices[i], dist);
 					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
 					distFromPrevDirs[i] = dist[0];
 				}
-				if(cur != start) {
-					continue;
-				}else {break;}
-			}	
-			
-			for(int i = 0; i < 2; ++i) {
-				//nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
-				nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), cur+ XY*(i), dist);
-				nextIndices[i] = cur + XY*(i) + Adjacents[nextDirs[i]];
-				distFromPrevDirs[i] = dist[0];
 			}
-			/*}else {
+			else {
 				for(int i = 0; i < 2; ++i) {
-					nextDirs[i] = GetCCIndexPlanar(nextIndices[i] - Adjacents[dir], nextIndices[i], dist);
-					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
+					//nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
+					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), cur+ XY*(i), dist);
+					nextIndices[i] = cur + XY*(i) + Adjacents[nextDirs[i]];
 					distFromPrevDirs[i] = dist[0];
 				}
-			}*/
-			
-		} while(cur != start);
+			}
+			prevDir = dir;
+		} while(cur != start && cur != start + XY);
 	}
 	
 	// Check half dir from lower vertex to see if upper vertex is radially out from the lower
 	boolean inner(byte halfDir, byte dir) {
 		// Act on diagonal half dirs only
 		if(halfDir != -1 && halfDir != 8) {
-			if(halfDir == (byte)Math.floorMod(dir -1,8) ||  halfDir == (byte)Math.floorMod(dir -2,8) || halfDir == (byte)Math.floorMod(dir -3,8)) {
+			//if(halfDir == (byte)Math.floorMod(dir -1,8) ||  halfDir == (byte)Math.floorMod(dir -2,8) || halfDir == (byte)Math.floorMod(dir -3,8)) {
+			if(halfDir == (byte)Math.floorMod(dir -3,8)) {
 				return true;
 			}
 		}
@@ -420,7 +493,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		if(((int)Math.abs(next-prev) % (int)(WIDTH*HEIGHT)) == 0){
 			int length = WIDTH*HEIGHT;
 			while(length < Math.abs(next-prev)) {
-				if(!curRegion.contains(Math.max(next, prev) - length)) {
+				if(!subRegion.contains(Math.max(next, prev) - length)) {
 					return false;
 				}
 				length += WIDTH*HEIGHT;
@@ -455,9 +528,11 @@ public class Geometry<T extends RealType<T>> implements Command{
 	}
 	
 	// Precondition: indices must be on the same z plane
-		// Check for the next counter-clockwise index from the vector cur->prev
-		byte GetCCIndexPlanar(int iPrev, int iCur, /*ref*/byte[] dist) throws Exception
+	// Check for the next counter-clockwise index from the vector cur->prev
+	byte GetCCIndexPlanar(int iPrev, int iCur, /*ref*/byte[] dist) throws Exception
 		{
+			if(iCur > Collections.max(subRegion)) return 8;
+		
 			// Next direction must be at least 45 deg. away from the previous.
 			byte startdir = (byte)(GetStartDir(iPrev, iCur)+1);
 			dist[0] = 0;
@@ -468,7 +543,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 				for (byte i = startdir; i <= startdir+6; ++i) {
 					byte imod = (byte)(i % 8);
 					if(!outOfBounds[edgeIdx][imod]) {
-						if (curRegion.contains(iCur + Adjacents[imod])) {
+						if (subRegion.contains(iCur + Adjacents[imod])) {
 							dist[0] = (byte)(1 + i - startdir);
 							return imod;
 						}
@@ -480,7 +555,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 			// Check start and next 5 dirs for a point on this plane:
 			for (byte i = startdir; i < startdir+6; ++i) {
 				byte imod = (byte)(i % 8);
-				if (curRegion.contains(iCur + Adjacents[imod])) {
+				if (subRegion.contains(iCur + Adjacents[imod])) {
 					dist[0] = (byte)(1 + i - startdir);
 					return imod;
 				}
@@ -492,17 +567,19 @@ public class Geometry<T extends RealType<T>> implements Command{
 	// Check for the next counter-clockwise index from the vector cur->prev
 	byte GetCCIndexPlanar2(int dir, int iCur, /*ref*/byte[] dist) throws Exception
 	{
+		if(iCur > Collections.max(subRegion)) return 8;
+		if(iCur < 0) return 8;
+		
 		// Next direction must be at least 45 deg. away from the previous.
 		byte startdir = (byte)((dir+1)%8);
 		dist[0] = 0;
 		
-		// Use Vector2D when on edges:
 		if(visitedSet.onEdge(iCur)) {
 			int edgeIdx = visitedSet.getEdgeIndex(iCur);
 			for (byte i = startdir; i <= startdir+6; ++i) {
 				byte imod = (byte)(i % 8);
 				if(!outOfBounds[edgeIdx][imod]) {
-					if (curRegion.contains(iCur + Adjacents[imod])) {
+					if (subRegion.contains(iCur + Adjacents[imod])) {
 						dist[0] = (byte)(1 + i - startdir);
 						return imod;
 					}
@@ -511,10 +588,10 @@ public class Geometry<T extends RealType<T>> implements Command{
 			return V_ISOLATED;
 		}
 		
-		// Check start and next 5 dirs for a point on this plane:
+		// Check start and next 6 dirs for a point on this plane:
 		for (byte i = startdir; i < startdir+6; ++i) {
 			byte imod = (byte)(i % 8);
-			if (curRegion.contains(iCur + Adjacents[imod])) {
+			if (subRegion.contains(iCur + Adjacents[imod])) {
 				dist[0] = (byte)(1 + i - startdir);
 				return imod;
 			}
@@ -542,10 +619,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 			new Vector2D(-1,1), new Vector2D(-1,0), new Vector2D(-1,-1),
 			new Vector2D(0,-1), new Vector2D(1,-1), new Vector2D(0,0)
 	};
+
 	
 	private int xyz = 0;
 	void findRegion(int targetValue, int x, int y, int z) 
 	{ 
+		if(curRegion.size() > XY*DEPTH) return;
 		if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) 
 	        return;
 		xyz = XYZ(x, y, z);
@@ -560,7 +639,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	    curRegion.add(xyz);
 	    visitedSet.put(xyz);
 	  
-	    // Recur for north, east, south and west 
+	    // Recur for north, east, south and west
 	    findRegion(targetValue,x+1, y, z);
 	    findRegion(targetValue,x-1, y, z);
 	    findRegion(targetValue,x, y+1, z);
@@ -573,7 +652,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	{ 
 		imp.setSlice(z+1);
 	    int targetValue = imp.getProcessor().get(x, y);
-	    findRegion(targetValue, x, y, z); 
+	    findRegion(targetValue, x, y, z);
 	} 
 	
 	// For an edge index, is a given direction out of bounds?
