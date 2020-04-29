@@ -81,7 +81,7 @@ public class Juicer<T extends RealType<T>> implements Command {
 
 		// open and display an image
 		//final File imageFile = instance.ui().chooseFile(null, FileWidget.OPEN_STYLE);
-		final Dataset image = instance.scifio().datasetIO().open("C:/Users/kevin/Desktop/smalltif_03-1.tif");
+		final Dataset image = instance.scifio().datasetIO().open("C:/Users/kevin/Desktop/smalltif-2.tif");
 		instance.ui().show(image);
 		
 		// execute the filter, waiting for the operation to finish.

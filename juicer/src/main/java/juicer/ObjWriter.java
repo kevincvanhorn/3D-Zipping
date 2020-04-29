@@ -28,7 +28,7 @@ public class ObjWriter{
 	            	
 	            	writer.write("o " + obj.toString() + "\n"); obj++;
 	            	
-	            	int cnt = numVerts;
+	            	/*int cnt = numVerts;
 	            	for(int z = 0; z < geo.DEPTH; ++z) {
 	        	        for(int y = 0; y < geo.HEIGHT; ++y) {
 	        	        	for(int x = 0; x < geo.WIDTH; ++x) {
@@ -40,16 +40,33 @@ public class ObjWriter{
 	        	        	}
 	        	        }
 	                }
-	            	numVerts = cnt;
+	            	numVerts = cnt;*/
 	            	
-	            	writer.write("\n");
-	            	writer.write("l ");
+	            	//writer.write("\n");
+	            	//writer.write("l ");
 	            
-    				for(int j : (ArrayList<Integer>)(geo.shapesIndices.get(geo.shapesIndices.size()-1))) {
+    				/*for(int j : (ArrayList<Integer>)(geo.shapesIndices.get(geo.shapesIndices.size()-1))) {
+    					
     					if(iMap.get(j) != null) {
     						writer.write(iMap.get(j).toString() + " ");
     					}
+    				}*/
+	            	ArrayList<Integer> indices = ((ArrayList<Integer>)(geo.shapesIndices.get(geo.shapesIndices.size()-1)));
+	            	ArrayList<Byte> halfList = ((ArrayList<Byte>)(geo.halfLists.get(geo.halfLists.size()-1)));
+	            	for(int j = 0; j < indices.size(); ++j) {
+	            		Geometry.Vector3D v = geo.vFromIndex3D(indices.get(j));
+	            		v.plusEq(vMap[halfList.get(j) + 1]);
+	            		writer.write("v " + v.x + " "+ v.y + " " + v.z + "\n");
     				}
+	            	
+	            	writer.write("\n");
+	            	writer.write("l ");
+	            	
+	            	int cnt = numVerts;
+	            	for(int j = 0; j < indices.size(); ++j) {
+	            		writer.write(cnt + " "); cnt++;
+    				}
+	            	numVerts = cnt;
     				
     				writer.write("\n\n");
 	    		}
@@ -60,5 +77,18 @@ public class ObjWriter{
 		written = true;
 		//System.out.println(obj.toString());
 	}
+	
+	protected Geometry.Vector3D vMap[] = new Geometry.Vector3D[]{
+		new Geometry.Vector3D(0,0,0),   //-1
+		new Geometry.Vector3D(0.5f,0,.5f), // 0
+		new Geometry.Vector3D(0.5f,0.5f,.5f), // 1
+		new Geometry.Vector3D(0,0.5f,.5f), // 2
+		new Geometry.Vector3D(-0.5f,0.5f,.5f), // 3
+		new Geometry.Vector3D(-0.5f,0,.5f), // 4
+		new Geometry.Vector3D(-0.5f,-0.5f,.5f), // 5
+		new Geometry.Vector3D(0,-0.5f,.5f), // 6
+		new Geometry.Vector3D(0.5f,-0.5f,.5f), // 7
+		new Geometry.Vector3D(0,0,.5f), // 8
+	};
 	
 }

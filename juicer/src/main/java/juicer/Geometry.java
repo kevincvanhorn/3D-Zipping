@@ -125,17 +125,12 @@ public class Geometry<T extends RealType<T>> implements Command{
     }
     
 	public static class Vector3D{
-		public int x, y, z;
+		public float x, y, z;
 		
-		public Vector3D(int x, int y, int z) {
+		public Vector3D(float x, float y, float z) {
 			this.x = x;
 			this.y = y; 
 			this.z = z;
-		}
-		
-		@Override
-		public int hashCode() {
-			return ((x* 73856093)^(y* 83492791)^(z* 83442791));
 		}
 		
 		@Override
@@ -146,13 +141,19 @@ public class Geometry<T extends RealType<T>> implements Command{
 	        return x == it.x && y == it.y && it.z == z;
 	    }
 		
+		public void plusEq(Vector3D vec) {
+			x += vec.x;
+			y += vec.y;
+			z += vec.z;
+		}
+		
 		 public Vector3D clone() {
 	        return new Vector3D(x, y, z);
 	    }
 		 
 		 @Override
 		    public String toString() {
-		        return "{" + x + ", " + y + "}";
+		        return "{" + x + ", " + y + ", " + z + "}";
 		    }
 	}
 	
@@ -239,6 +240,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	byte[] distFromPrevDirs;
 	//public ArrayList<ArrayList<Vector3D>> shapes = new ArrayList<ArrayList<Vector3D>>();
 	public ArrayList<ArrayList<Integer>> shapesIndices = new ArrayList<ArrayList<Integer>>(0);
+	public ArrayList<ArrayList<Byte>> halfLists = new ArrayList<ArrayList<Byte>>(0);
 	private void VisitConnectedRegion(int x, int y, int z) throws Exception {
 		//ArrayList<Vector3D> curShape = new ArrayList<Vector3D>();
 		ArrayList<Integer> curShapeIndices = new ArrayList<Integer>();
@@ -258,7 +260,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		
 			iStart = Collections.min(curRegion); // min(z): top left corner
 			while((int)(iStart*XYInv) == level || (int)(iStart*XYInv) == level+1) {
-				
+				//curShapeHalfIndices.add((byte)10); // 10 indicates new object
 				findNextSubRegion(level+1); // Implicit based on curRegion removals				
 				
 				iLevelPrev[0] = iStart + Adjacents[0]; // Immediate right - this could be out of bounds
@@ -273,12 +275,11 @@ public class Geometry<T extends RealType<T>> implements Command{
 				
 				if(curRegion.size() > 0) {
 					iStart = Collections.min(curRegion); // min(z): top left corner
-				}else break;
-				
+				} else break;
 			}
 
 		}
-
+		halfLists.add(curShapeHalfIndices);
 		shapesIndices.add(curShapeIndices);
 		objWriter.saveFile("test.obj");
 	}
@@ -409,19 +410,6 @@ public class Geometry<T extends RealType<T>> implements Command{
 				halfList.add((byte)8);
 				cur = nextIndices[0];
 			}
-			/*
-			else if(distFromPrevDirs[0] != 0 && (distDiff == 1) && subRegion.contains(nextIndices[1]-XY)) {
-				// Outer Diagonal
-				cur = nextIndices[0];
-				dir = nextDirs[idx];
-				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
-			}
-			else if((distDiff == 1) && subRegion.contains(nextIndices[0]+XY)) { // distFromPrevDirs[0] != 0 && 
-				// Outer Diagonal
-				cur = nextIndices[0];
-				dir = nextDirs[idx]; // 1
-				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
-			}*/
 			else if(distDiff == 1 && !subRegion.contains(nextIndices[0]+XY) && subRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) { //  distFromPrevDirs[0] != 0 && 
 				// Inner Diagonals
 				cur = nextIndices[0];
@@ -429,14 +417,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 				idx = 0;
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 				usePillar = false;
-			}/*
-			else if(distFromPrevDirs[1] == 0 && subRegion.contains(nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)])) {
-				// Use lower
-				cur = nextIndices[0];
-				dir = nextDirs[0];
-				nextIndices[1] = nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)];
-				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
-			}*/
+			}
 			else if(idx == 1 && subRegion.contains(nextIndices[idx] - XY)) {
 				// Triangle contained to lower or pillar:
 				cur = nextIndices[0];
