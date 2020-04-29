@@ -335,6 +335,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		int start = iStart[0];
 		int prev = iPrev[0];
 		int cur = start;
+		int start2 = start + XY; // level 2 start 
 		
 		byte dir = 0; // [0]->
 		
@@ -360,12 +361,15 @@ public class Geometry<T extends RealType<T>> implements Command{
 			nextDirs[i] = GetCCIndexPlanar(prev + XY*(i),cur + XY*(i), dist);
 			if(nextDirs[i] == 8 && subRegion.contains(cur + Adjacents[0])) {
 				nextDirs[i] = 0;
+				start2 = cur+Adjacents[0];
 			}
 			nextIndices[i] = cur+ XY*(i) + Adjacents[nextDirs[i]]; // Same index if no adjacent found.
 			distFromPrevDirs[i] = dist[0];
 		}
 		
 		int prevDir = 0;
+		boolean usePillar = true;
+		boolean prevPillar = true;
 		
 		// CORE LOOP:
 		do {
@@ -379,6 +383,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 				nextIndices[1] = nextIndices[1] + Adjacents[nextDirs[1]];
 			}
 			
+			usePillar = true;
 			int idx = getNextDirIdx(false);
 			
 			int distDiff = Math.abs(distFromPrevDirs[0] - distFromPrevDirs[1]);
@@ -393,6 +398,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 				else if(halfList.size() > 0) {
 					halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
 				}
+				usePillar = prevPillar;
 			}
 			else if(nextIndices[1] == nextIndices[0]+XY) {
 				// Vertical
@@ -416,7 +422,9 @@ public class Geometry<T extends RealType<T>> implements Command{
 				// Inner Diagonals
 				cur = nextIndices[0];
 				dir = nextDirs[0];
+				idx = 0;
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
+				usePillar = false;
 			}/*
 			else if(distFromPrevDirs[1] == 0 && subRegion.contains(nextIndices[0]+XY+Adjacents[(byte)Math.floorMod(nextDirs[0]+5,8)])) {
 				// Use lower
@@ -426,14 +434,21 @@ public class Geometry<T extends RealType<T>> implements Command{
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 			}*/
 			else if(idx == 1 && subRegion.contains(nextIndices[idx] - XY)) {
-				// Triangle contained to lower:
+				// Triangle contained to lower or pillar:
 				cur = nextIndices[0];
-				dir = nextDirs[1];
-				halfList.add((byte)-1); // single point
+				if(subRegion.contains(cur + XY)) { 
+					dir = nextDirs[idx]; 
+					halfList.add((byte)8); // Pillar
+				}
+				else {
+					dir = nextDirs[1]; 
+					halfList.add((byte)-1); // single point
+				}
 			}
 			else if(idx == 0 && subRegion.contains(nextIndices[idx] + XY)) {
 				// Triangle contained to upper:
 				cur = nextIndices[1];
+				nextIndices[0] = cur - XY;
 				idx = 1;
 				dir = nextDirs[0];
 				halfList.add((byte)-1); // single point
@@ -454,7 +469,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 			}
 			
 			// Use [1] directly if the inner vertex is closer in to the center based on dir
-			if(inner(halfList.get(halfList.size()-1), dir)) { // || idx == 1 && !subRegion.contains(cur - XY)
+			if(!usePillar || (idx == 1 && !subRegion.contains(cur - XY))) {// || inner(halfList.get(halfList.size()-1), dir)) { // 
 				for(int i = 0; i < 2; ++i) {
 					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), nextIndices[i], dist);
 					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
@@ -469,8 +484,8 @@ public class Geometry<T extends RealType<T>> implements Command{
 					distFromPrevDirs[i] = dist[0];
 				}
 			}
-			prevDir = dir;
-		} while(cur != start && cur != start + XY);
+			prevDir = dir; prevPillar = usePillar;
+		} while(cur != start && cur != start2);
 	}
 	
 	// Check half dir from lower vertex to see if upper vertex is radially out from the lower
@@ -567,7 +582,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	// Check for the next counter-clockwise index from the vector cur->prev
 	byte GetCCIndexPlanar2(int dir, int iCur, /*ref*/byte[] dist) throws Exception
 	{
-		if(iCur > Collections.max(subRegion)) return 8;
+		if(iCur > XY*DEPTH) return 8;
 		if(iCur < 0) return 8;
 		
 		// Next direction must be at least 45 deg. away from the previous.
