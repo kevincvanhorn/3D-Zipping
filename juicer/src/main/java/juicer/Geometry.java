@@ -642,7 +642,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	private int xyz = 0;
 	void findRegion(int targetValue, int x, int y, int z) 
 	{ 
-		if(curRegion.size() > XY*DEPTH) return;
+		//if(curRegion.size() > 100) return;
 		if (x < 0 || x >= WIDTH || y < 0 || y >= HEIGHT || z < 0 || z >= DEPTH) 
 	        return;
 		xyz = XYZ(x, y, z);

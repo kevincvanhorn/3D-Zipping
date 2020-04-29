@@ -58,7 +58,7 @@ public class ObjWriter{
 	            e.printStackTrace();
 	        }		
 		written = true;
-		System.out.println(obj.toString());
+		//System.out.println(obj.toString());
 	}
 	
 }
