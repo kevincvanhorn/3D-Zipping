@@ -377,8 +377,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 			
 			// Turn around
 			if(nextDirs[0] == 8 && nextDirs[1] == 8) {
-				nextDirs[0] = (byte)Math.floorMod(prevDir+4,8);
-				nextDirs[1] = (byte)Math.floorMod(prevDir+4,8);
+				if(subRegion.contains(nextIndices[0] + Adjacents[(byte)Math.floorMod(prevDir+3,8)])) {
+					nextDirs[0] = (byte)Math.floorMod(prevDir+3,8);
+				}else {nextDirs[0] = (byte)Math.floorMod(prevDir+4,8);}
+				if(subRegion.contains(nextIndices[1] + Adjacents[(byte)Math.floorMod(prevDir+3,8)])) {
+					nextDirs[1] = (byte)Math.floorMod(prevDir+3,8);
+				}else {nextDirs[1] = (byte)Math.floorMod(prevDir+4,8);}
 				nextIndices[0] = nextIndices[0] + Adjacents[nextDirs[0]];
 				nextIndices[1] = nextIndices[1] + Adjacents[nextDirs[1]];
 			}
