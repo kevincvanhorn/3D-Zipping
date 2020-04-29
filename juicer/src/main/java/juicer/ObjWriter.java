@@ -45,15 +45,12 @@ public class ObjWriter{
 	            	writer.write("\n");
 	            	writer.write("l ");
 	            
-	    			//for(int i = 0; i < geo.shapesIndices.size(); ++i) {
-	    				for(int j : (ArrayList<Integer>)(geo.shapesIndices.get(geo.shapesIndices.size()-1))) {
-	    					//Geometry.Vector3D v =  geo.vFromIndex3D(j);
-	    					if(iMap.get(j) != null) {
-	    						//System.out.println(iMap.get(j) + " | " + j);
-	    						writer.write(iMap.get(j).toString() + " ");
-	    					}
-	    				}
-	    			//}
+    				for(int j : (ArrayList<Integer>)(geo.shapesIndices.get(geo.shapesIndices.size()-1))) {
+    					if(iMap.get(j) != null) {
+    						writer.write(iMap.get(j).toString() + " ");
+    					}
+    				}
+    				
     				writer.write("\n\n");
 	    		}
 	            writer.close();

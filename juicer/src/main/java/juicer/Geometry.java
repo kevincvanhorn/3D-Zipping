@@ -254,7 +254,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 		
 		// Visit sets of 2 z levels of voxels:
 		// Modifies curRegion with each visit.
-		for(int level = 0; level <= maxZ-z; level+=2) { // maxZ-z-1 is the highest level
+		for(int level = 0; level <= maxZ; level+=2) { // maxZ-z-1 is the highest level
 		
 			iStart = Collections.min(curRegion); // min(z): top left corner
 			while((int)(iStart*XYInv) == level || (int)(iStart*XYInv) == level+1) {
@@ -418,10 +418,10 @@ public class Geometry<T extends RealType<T>> implements Command{
 				dir = nextDirs[idx]; // 1
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 			}*/
-			else if(distDiff == 1 && subRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) { //  distFromPrevDirs[0] != 0 && 
+			else if(distDiff == 1 && !subRegion.contains(nextIndices[0]+XY) && subRegion.contains(nextIndices[0]+Adjacents[(byte)Math.floorMod(nextDirs[0]+1,8)])) { //  distFromPrevDirs[0] != 0 && 
 				// Inner Diagonals
 				cur = nextIndices[0];
-				dir = nextDirs[0];
+				dir = nextDirs[idx];
 				idx = 0;
 				halfList.add((byte)GetStartDir(nextIndices[1]-XY, nextIndices[0]));
 				usePillar = false;
@@ -439,10 +439,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 				if(subRegion.contains(cur + XY)) { 
 					dir = nextDirs[idx]; 
 					halfList.add((byte)8); // Pillar
+					idx =0;
 				}
 				else {
 					dir = nextDirs[1]; 
 					halfList.add((byte)-1); // single point
+					idx = 0;
 				}
 			}
 			else if(idx == 0 && subRegion.contains(nextIndices[idx] + XY)) {
@@ -472,6 +474,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 			if(!usePillar || (idx == 1 && !subRegion.contains(cur - XY))) {// || inner(halfList.get(halfList.size()-1), dir)) { // 
 				for(int i = 0; i < 2; ++i) {
 					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), nextIndices[i], dist);
+					//nextDirs[i] = GetCCIndexPlanar2(dir, nextIndices[i], dist);
 					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
 					distFromPrevDirs[i] = dist[0];
 				}
