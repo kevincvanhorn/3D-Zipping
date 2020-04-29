@@ -64,6 +64,12 @@ public class ObjWriter{
 	            	
 	            	int cnt = numVerts;
 	            	for(int j = 0; j < indices.size(); ++j) {
+	            		
+	            		/*if(j > 0 && Math.abs(indices.get(j) - indices.get(j-1)) > geo.XY+1) {
+	            			writer.write("\n");
+	    	            	writer.write("l ");
+	            		}*/
+	            		
 	            		writer.write(cnt + " "); cnt++;
     				}
 	            	numVerts = cnt;

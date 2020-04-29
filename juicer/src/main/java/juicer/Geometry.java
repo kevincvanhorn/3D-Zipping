@@ -40,7 +40,7 @@ public class Geometry<T extends RealType<T>> implements Command{
     private float WIDTH_INV;
     public int HEIGHT;
     public int DEPTH;
-    private int XY; // WIDTH * HEIGHT
+    public int XY; // WIDTH * HEIGHT
     private float XYInv;
     
     private byte V_ISOLATED = 8; // No vertices in the 8 connected planar region of a vertex.
@@ -371,10 +371,13 @@ public class Geometry<T extends RealType<T>> implements Command{
 		int prevDir = 0;
 		boolean usePillar = true;
 		boolean prevPillar = true;
+		int inARow = 0; // Semaphore
 		
 		// CORE LOOP:
 		do {
 			curShapeIndices.add(cur);
+			inARow--;
+			if(inARow < 0) {inARow = 0;}
 			
 			// Turn around
 			if(nextDirs[0] == 8 && nextDirs[1] == 8) {
@@ -397,12 +400,24 @@ public class Geometry<T extends RealType<T>> implements Command{
 				// Go to [0] and add half z+
 				cur = nextIndices[0];
 				dir = nextDirs[0];
-				if(nextIndices[0] == nextIndices[1]-XY) {
-					halfList.add((byte)8); // Vertical: z + 0.5	
+				
+				if(prevDir == dir) {inARow += 2;}
+				else {inARow = 0;}
+				inARow += 2;
+				
+				if(inARow - 1 == 2) {
+					curShapeIndices.remove(curShapeIndices.size()-1); // Remove prev
+					inARow -= 1;
+				}	
+				else {
+					if(nextIndices[0] == nextIndices[1]-XY) {
+						halfList.add((byte)8); // Vertical: z + 0.5	
+					}
+					else if(halfList.size() > 0) {
+						halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
+					}
 				}
-				else if(halfList.size() > 0) {
-					halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
-				}
+				
 				usePillar = prevPillar;
 			}
 			else if(nextIndices[1] == nextIndices[0]+XY) {
