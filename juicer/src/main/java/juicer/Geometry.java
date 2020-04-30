@@ -301,7 +301,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 	{ 
 		// Base Case
 		if((int)(iVal * XYInv) > maxZ) return;
-		else if(subRegionVisited.contains(iVal))return;
+		else if(subRegionVisited.contains(iVal)) return;
 		else if(!curRegion.contains(iVal)) return;
 			
 		// Add
@@ -371,13 +371,13 @@ public class Geometry<T extends RealType<T>> implements Command{
 		int prevDir = 0;
 		boolean usePillar = true;
 		boolean prevPillar = true;
-		int inARow = 0; // Semaphore
+		
+		int inARowStartDir = start;
+		int inARowCnt = 0;
 		
 		// CORE LOOP:
 		do {
 			curShapeIndices.add(cur);
-			inARow--;
-			if(inARow < 0) {inARow = 0;}
 			
 			// Turn around
 			if(nextDirs[0] == 8 && nextDirs[1] == 8) {
@@ -401,14 +401,20 @@ public class Geometry<T extends RealType<T>> implements Command{
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				
-				if(prevDir == dir) {inARow += 2;}
-				else {inARow = 0;}
-				inARow += 2;
-				
-				if(inARow - 1 == 2) {
-					curShapeIndices.remove(curShapeIndices.size()-1); // Remove prev
-					inARow -= 1;
-				}	
+				if(inARowCnt <=  0 && dir != inARowStartDir) {
+					inARowStartDir = dir;
+					inARowCnt = 1;
+					if(nextIndices[0] == nextIndices[1]-XY) {
+						halfList.add((byte)8); // Vertical: z + 0.5	
+					}
+					else if(halfList.size() > 0) {
+						halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
+					}
+				}
+				else if(dir == inARowStartDir || prevDir == inARowStartDir) {
+					inARowCnt = 0;
+					curShapeIndices.remove(curShapeIndices.size()-1);
+				}
 				else {
 					if(nextIndices[0] == nextIndices[1]-XY) {
 						halfList.add((byte)8); // Vertical: z + 0.5	
@@ -489,6 +495,7 @@ public class Geometry<T extends RealType<T>> implements Command{
 			}
 			prevDir = dir; prevPillar = usePillar;
 		} while(cur != start && cur != start2);
+		halfList.remove(halfList.size()-1);
 	}
 	
 	// Check half dir from lower vertex to see if upper vertex is radially out from the lower
