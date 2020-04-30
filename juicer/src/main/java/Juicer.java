@@ -1,11 +1,3 @@
-/*
- * To the extent possible under law, the ImageJ developers have waived
- * all copyright and related or neighboring rights to this tutorial code.
- *
- * See the CC0 1.0 Universal license for details:
- *     https://creativecommons.org/publicdomain/zero/1.0/
- */
-
 import juicer.Geometry;
 
 
@@ -80,8 +72,7 @@ public class Juicer<T extends RealType<T>> implements Command {
 		instance.ui().showUI();
 
 		// open and display an image
-		//final File imageFile = instance.ui().chooseFile(null, FileWidget.OPEN_STYLE);
-		final Dataset image = instance.scifio().datasetIO().open("C:/Users/kevin/Desktop/test_02.tif");
+		final Dataset image = instance.scifio().datasetIO().open("C:/Users/kevin/Desktop/smalltif-2.tif");
 		instance.ui().show(image);
 		
 		// execute the filter, waiting for the operation to finish.

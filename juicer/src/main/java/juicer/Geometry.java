@@ -1,7 +1,5 @@
 package juicer;
 
-// https://github.com/imagej/tutorials/blob/master/maven-projects/using-ops/src/main/java/UsingOpsLabeling.java
-
 import net.imagej.mesh.*;
 
 import java.awt.List;
@@ -45,11 +43,15 @@ public class Geometry<T extends RealType<T>> implements Command{
     
     private byte V_ISOLATED = 8; // No vertices in the 8 connected planar region of a vertex.
     
-    //public Set<Vector3D> Regions;
     public int XYZ(int x, int y, int z) { return x + WIDTH*(y+ HEIGHT*z); }
     private int[] Adjacents;
     private ObjWriter objWriter;
-    
+
+    /**
+     * Convert to 3D vector from input index.
+     * @param idx index representation of the vector.
+     * @return vector representation.
+     */
     public Vector3D vFromIndex3D(int idx) {
     	// x + Wy + WHz
 		int x = idx%WIDTH;
@@ -58,12 +60,11 @@ public class Geometry<T extends RealType<T>> implements Command{
     	return new Vector3D(x,y,z);
 	}
     
-    //public Vector2D V2FromValue(int val) { 
-    //	return new Vector2D((int)(val%WIDTH), (int)(((val)% WIDTH)*WIDTH_INV)); 
-	//}
-
    protected VisitedSet visitedSet;
    
+   /**
+    * Custom Set class with bit-level matrix for caching edges and contained verts.
+    */
    private class VisitedSet {
     	private byte[] set;
 
@@ -124,6 +125,9 @@ public class Geometry<T extends RealType<T>> implements Command{
     	}
     }
     
+   /**
+    * 3D Point class for debugging.
+    */
 	public static class Vector3D{
 		public float x, y, z;
 		
@@ -157,6 +161,9 @@ public class Geometry<T extends RealType<T>> implements Command{
 		    }
 	}
 	
+	/**
+	 * 2D Point class for debugging.
+	 */
 	public static class Vector2D{
 		public int x, y;
 		
@@ -188,6 +195,9 @@ public class Geometry<T extends RealType<T>> implements Command{
 		    }
 	}
 	
+	/**
+	 * Constructor that initializes based on an ImgPlus.
+	 */
 	public Geometry(OpService opService, ImgPlus image, ConvertService convertService) {
 		this.opService = opService;
 		this.image = image;
@@ -202,8 +212,6 @@ public class Geometry<T extends RealType<T>> implements Command{
 		
 		visitedSet = new VisitedSet(WIDTH * HEIGHT * DEPTH);
 		
-		// LOCAL
-		//curRegion = new HashSet<Vector3D>();
 		curRegion = new HashSet<Integer>();
 		
 		Adjacents = new int[]{ 
@@ -214,6 +222,10 @@ public class Geometry<T extends RealType<T>> implements Command{
 		objWriter = new ObjWriter(this);
 	}
 	
+	/**
+	 * Runs when after the image is opened. Loops through each voxel not yet visited and finds
+	 * the 6-connected component.
+	 */
 	@Override
 	public void run() {		
         System.out.println("Geometry: Finding regions:");
@@ -238,15 +250,16 @@ public class Geometry<T extends RealType<T>> implements Command{
 	
 	protected HashSet<Integer> curRegion;
 	byte[] distFromPrevDirs;
-	//public ArrayList<ArrayList<Vector3D>> shapes = new ArrayList<ArrayList<Vector3D>>();
 	public ArrayList<ArrayList<Integer>> shapesIndices = new ArrayList<ArrayList<Integer>>(0);
 	public ArrayList<ArrayList<Byte>> halfLists = new ArrayList<ArrayList<Byte>>(0);
+	/**
+	 * Visit a 6-connected region & traverse each 2-stack, wrapping the region.
+	 * @param x,y,z the starting vertex for the seed fill of the region.
+	 */
 	private void VisitConnectedRegion(int x, int y, int z) throws Exception {
-		//ArrayList<Vector3D> curShape = new ArrayList<Vector3D>();
 		ArrayList<Integer> curShapeIndices = new ArrayList<Integer>();
 		ArrayList<Byte> curShapeHalfIndices = new ArrayList<Byte>();
 		curRegion.clear(); findRegion(x,y,z);
-		//System.out.println(curRegion.toString());
 		
 		int iStart;
 		int maxZ = Collections.max(curRegion) / XY;
@@ -287,16 +300,24 @@ public class Geometry<T extends RealType<T>> implements Command{
 	
 	protected HashSet<Integer> subRegion = new HashSet<Integer>();
 	protected HashSet<Integer> subRegionVisited = new HashSet<Integer>();
+	/**
+	 * Helper function for 2-stack recursive fill.
+	 * PRECONDTION: curRegion is filled.
+	 * @param maxZ the start index of the seed fill.
+	 */
 	void findNextSubRegion(int maxZ) 
 	{ 
 		subRegion.clear();
-		//subRegionVisited.clear();
 		int iStart = Collections.min(curRegion); // min(z): top left corner
 		
-	    //subRegion.add(iStart);
 		findSubRegion(iStart, maxZ);
 	} 
 	
+	/**
+	 * Recursive seed fill for a given 2-stack.
+	 * @param maxZ the upper 2-stack z index
+	 * @param iVal the current index of the seed fill.
+	 */
 	void findSubRegion(int iVal, int maxZ) 
 	{ 
 		// Base Case
@@ -331,7 +352,14 @@ public class Geometry<T extends RealType<T>> implements Command{
 	
 	// HALF-PRECISION:
 	// Represented with an accompanying list: halfList [z up 1/2 :1] 1bit [dir from vertex 0-7] 3bits
-	
+	/**
+	 * The main wrapping loop.
+	 * @param z the starting z index
+	 * @param curShapeIndices the output shape indices to append to.
+	 * @param halfList half precision parrallel list.
+	 * @param iStart the starting index.
+	 * @param iPrev the "dummy" previous index to indicate start direction.
+	 */
 	void visitLevel(int z, ArrayList<Integer> curShapeIndices, ArrayList<Byte> halfList, int[] iStart, int[] iPrev) throws Exception {
 		int start = iStart[0];
 		int prev = iPrev[0];
@@ -463,14 +491,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 			if(!usePillar || (idx == 1 && !subRegion.contains(cur - XY))) {// || inner(halfList.get(halfList.size()-1), dir)) { // 
 				for(int i = 0; i < 2; ++i) {
 					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), nextIndices[i], dist);
-					//nextDirs[i] = GetCCIndexPlanar2(dir, nextIndices[i], dist);
 					nextIndices[i] = nextIndices[i] + Adjacents[nextDirs[i]];
 					distFromPrevDirs[i] = dist[0];
 				}
 			}
 			else {
 				for(int i = 0; i < 2; ++i) {
-					//nextDirs[i] = GetCCIndexPlanar(cur + XY*(i) - Adjacents[dir], cur+ XY*(i), dist);
 					nextDirs[i] = GetCCIndexPlanar2((byte)((dir+4)%8), cur+ XY*(i), dist);
 					nextIndices[i] = cur + XY*(i) + Adjacents[nextDirs[i]];
 					distFromPrevDirs[i] = dist[0];
@@ -496,7 +522,6 @@ public class Geometry<T extends RealType<T>> implements Command{
 	boolean inner(byte halfDir, byte dir) {
 		// Act on diagonal half dirs only
 		if(halfDir != -1 && halfDir != 8) {
-			//if(halfDir == (byte)Math.floorMod(dir -1,8) ||  halfDir == (byte)Math.floorMod(dir -2,8) || halfDir == (byte)Math.floorMod(dir -3,8)) {
 			if(halfDir == (byte)Math.floorMod(dir -3,8)) {
 				return true;
 			}
@@ -504,10 +529,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 		return false;
 	}
 	
+	// Deprecated helper function
 	boolean collinear(int prev, int cur) throws Exception {
 		return GetStartDir(prev, cur) % 2 == 0;
 	}
 	
+	// Deprecated helper function
 	boolean isValidPath(int prev, int next) {
 		if(((int)Math.abs(next-prev) % (int)(WIDTH*HEIGHT)) == 0){
 			int length = WIDTH*HEIGHT;
@@ -521,6 +548,11 @@ public class Geometry<T extends RealType<T>> implements Command{
 		return true;
 	}
 	
+	/**
+	 * Finds the next direction based on global distFromPrevDirs.
+	 * @param useMin the objective function to compare the distances with
+	 * @return the index of the next direction [0] or [1]
+	 */
 	private int getNextDirIdx(boolean useMin){
 		if(!useMin) {
 			byte max = 0; int idx = 0;
