@@ -401,29 +401,12 @@ public class Geometry<T extends RealType<T>> implements Command{
 				cur = nextIndices[0];
 				dir = nextDirs[0];
 				
-				if(inARowCnt <=  0 && dir != inARowStartDir) {
-					inARowStartDir = dir;
-					inARowCnt = 1;
-					if(nextIndices[0] == nextIndices[1]-XY) {
-						halfList.add((byte)8); // Vertical: z + 0.5	
-					}
-					else if(halfList.size() > 0) {
-						halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
-					}
+				if(nextIndices[0] == nextIndices[1]-XY) {
+					halfList.add((byte)8); // Vertical: z + 0.5	
 				}
-				else if(dir == inARowStartDir || prevDir == inARowStartDir) {
-					inARowCnt = 0;
-					curShapeIndices.remove(curShapeIndices.size()-1);
+				else if(halfList.size() > 0) {
+					halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
 				}
-				else {
-					if(nextIndices[0] == nextIndices[1]-XY) {
-						halfList.add((byte)8); // Vertical: z + 0.5	
-					}
-					else if(halfList.size() > 0) {
-						halfList.add(halfList.get(halfList.size()-1)); // Add previous element.
-					}
-				}
-				
 				usePillar = prevPillar;
 			}
 			else if(nextIndices[1] == nextIndices[0]+XY) {
@@ -493,9 +476,20 @@ public class Geometry<T extends RealType<T>> implements Command{
 					distFromPrevDirs[i] = dist[0];
 				}
 			}
+			
+			
+			if(inARowCnt <=  0 && dir != inARowStartDir) {
+				inARowStartDir = dir;
+				inARowCnt = 1;
+			}
+			else if(dir == inARowStartDir || prevDir == inARowStartDir) {
+				inARowCnt = 0;
+				curShapeIndices.remove(curShapeIndices.size()-1);
+				halfList.remove(halfList.size()-1);
+			}
+			
 			prevDir = dir; prevPillar = usePillar;
 		} while(cur != start && cur != start2);
-		halfList.remove(halfList.size()-1);
 	}
 	
 	// Check half dir from lower vertex to see if upper vertex is radially out from the lower
